@@ -139,28 +139,36 @@ const I18N = {
     match: "11 分赛", practice: "练习",
     lv: ["一级", "二级", "三级", "四级"],
     lvDesc: ["AI 不打旋转，球速慢", "AI 会打上旋和下旋", "全部旋转，相持更久", "球更快，AI 会打你的空当"],
-    help: ["点左 / 右半屏：平击", "上滑：拉上旋　下滑：搓下旋", "早击球打斜线，晚击球打直线",
-           "平击接上旋出界，接下旋下网", "搓上旋会冒高出界", "键盘：A D 平击，Q E 拉，Z C 搓"],
+    help: ["点左 / 右半屏：平击", "上滑：拉上旋　下滑：搓下旋",
+           "早打斜线，晚打直线；越偏角度越大，也越容易出界",
+           "条纹转得越快、拖尾越深，旋转越强",
+           "平击接上旋出界，接下旋下网；搓上旋出界",
+           "轻旋转打错能勉强回球，强旋转打错必失误",
+           "键盘：A D 平击，Q E 拉，Z C 搓"],
     swipe: "↑ 拉　↓ 搓",
     youServe: "你发球", aiServe: "AI 发球", serveTip: "点击或滑动发球",
     retry: "点击重新开始", win: "你赢了", lose: "你输了", again: "点击再来一局",
     wrong: "打错边了", missed: "没接到", out: "出界", net: "下网",
     aiMissed: "AI 没接到", aiError: "AI 失误", fault: "发球失误", error: "出错了",
-    eatTop: "吃上旋", eatBack: "吃下旋",
+    eatTop: "吃上旋", eatBack: "吃下旋", weak: "勉强回球", aiOutPos: "AI 失位", heavy: "强",
     spin: { top: "上旋", back: "下旋", side: "侧旋", topSide: "侧上旋", backSide: "侧下旋", flat: "平击" }
   },
   en: {
     match: "Match to 11", practice: "Practice",
     lv: ["Lv 1", "Lv 2", "Lv 3", "Lv 4"],
     lvDesc: ["No spin, slow balls", "Topspin and backspin", "All spins, longer rallies", "Faster, hits to open space"],
-    help: ["Tap left / right half: flat hit", "Swipe up: topspin　Swipe down: backspin", "Hit early for cross-court, late for down the line",
-           "Flat vs topspin goes long, vs backspin hits the net", "Backspin vs topspin pops up long", "Keys: A D flat, Q E topspin, Z C backspin"],
+    help: ["Tap left / right half: flat hit", "Swipe up: topspin　Swipe down: backspin",
+           "Early goes cross-court, late goes down the line; wider is riskier",
+           "Faster stripes and a darker trail mean heavier spin",
+           "Flat vs topspin goes long, vs backspin hits the net; backspin vs topspin goes long",
+           "Wrong stroke on light spin: weak return. On heavy spin: point lost",
+           "Keys: A D flat, Q E topspin, Z C backspin"],
     swipe: "↑ topspin　↓ backspin",
     youServe: "You serve", aiServe: "AI serves", serveTip: "Tap or swipe to serve",
     retry: "Tap to retry", win: "You win", lose: "You lose", again: "Tap to play again",
     wrong: "Wrong side", missed: "Missed", out: "Out", net: "Net",
     aiMissed: "AI missed", aiError: "AI error", fault: "Fault", error: "Error",
-    eatTop: "Too much topspin", eatBack: "Too much backspin",
+    eatTop: "Too much topspin", eatBack: "Too much backspin", weak: "Weak return", aiOutPos: "AI out of position", heavy: "Heavy ",
     spin: { top: "Topspin", back: "Backspin", side: "Sidespin", topSide: "Top-side", backSide: "Back-side", flat: "Flat" }
   }
 };
@@ -172,17 +180,20 @@ const TAU = Math.PI * 2;
 const STEP = 1 / 240;
 const ZE = 0.22;   // 击球区：击球线之前（秒）
 const ZL = 0.12;   // 击球区：击球线之后（秒）
+const LIGHT = 0.15;   // 旋转可见阈值（上旋/下旋）
+const HEAVY = 0.42;   // 强旋转阈值
+const AIM_MAX = 0.6;  // 最大落点偏移（台宽比例，超过 0.5 即压边线斜飞出台）
 
 // 11 分赛难度
 const LEVELS = {
   1: { types: { flat: 1 }, mag: 0, T: 1.2, fxMax: 0.34, n: 0,
-       perf: [0.06, 0.13], fat: [6, 15], press: 1.2 },
+       perf: [0.06, 0.13], fat: [6, 15], press: 1.2, aiSpeed: 0.5, react: 0.15 },
   2: { types: { top: 3, back: 3, side: 1 }, mag: 0.2, T: 1.05, fxMax: 0.38, n: 4,
-       perf: [0.05, 0.11], fat: [14, 30], press: 0.55 },
+       perf: [0.05, 0.11], fat: [14, 30], press: 0.55, aiSpeed: 0.62, react: 0.12 },
   3: { types: { top: 3, back: 3, side: 2, topSide: 2, backSide: 2 }, mag: 0.4, T: 0.9, fxMax: 0.42, n: 9,
-       perf: [0.045, 0.1], fat: [28, 50], press: 0.45 },
+       perf: [0.045, 0.1], fat: [28, 50], press: 0.45, aiSpeed: 0.75, react: 0.08 },
   4: { types: { top: 3, back: 3, side: 2.5, topSide: 2.5, backSide: 2.5 }, mag: 0.55, T: 0.74, fxMax: 0.42, n: 15,
-       perf: [0.04, 0.09], fat: [45, 80], press: 0.5, hunt: true }
+       perf: [0.04, 0.09], fat: [45, 80], press: 0.5, aiSpeed: 0.9, react: 0.05, hunt: true }
 };
 const PRACTICE_PERF = [0.05, 0.11];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -393,7 +404,7 @@ function planShot(from, toPlayer, o) {
     k: o.spinT > 0.15 ? 1.2 : o.spinT < -0.15 ? 0.8 : 1.0,
     e: clamp(0.8 - 0.3 * o.spinT, 0.55, 0.98),
     bounceY: o.bounceY, bounced: false,
-    spin: 0, spinRate: 14 + 26 * Math.max(Math.abs(o.spinT), Math.abs(o.spinS)),
+    spin: 0, spinRate: isHeavy(o) ? 46 : 16,
     spinT: o.spinT, spinS: o.spinS, toPlayer, still: false
   };
   const d1 = Math.abs(o.bounceY - from.y), d2 = Math.abs(targetY - o.bounceY);
@@ -460,7 +471,7 @@ function makeShot(from, toPlayer, gen) {
 }
 
 // 失误球：下网或出界
-function makeErrorShot(from, hitter, kind, spinT) {
+function makeErrorShot(from, hitter, kind, spinT, sideSign) {
   const toPlayer = hitter === "ai";
   const dir = toPlayer ? 1 : -1;
   const fx = W / 2 + rand(-0.3, 0.3) * L.tw;
@@ -468,9 +479,17 @@ function makeErrorShot(from, hitter, kind, spinT) {
     x: from.x, y: from.y, z: from.z, vx: 0, vy: 0, vz: 0, ax: 0, kick: 0,
     G1: L.G, G2: L.G, drag: 0, k: 1, e: 0.6, bounced: false,
     spin: 0, spinRate: 22, spinT, spinS: 0, toPlayer, still: false,
-    error: kind, hitter, hdir: dir
+    error: kind === "wide" ? "out" : kind, hitter, hdir: dir
   };
-  if (kind === "net") {
+  if (kind === "wide") {          // 角度太大，出边线
+    const endY = toPlayer ? L.net + L.half * rand(0.5, 0.8) : L.net - L.half * rand(0.5, 0.8);
+    const endX = (sideSign || 1) > 0 ? L.tr + rand(12, 30) * S : L.tl - rand(12, 30) * S;
+    const t = rand(0.6, 0.75);
+    b.vy = dir * Math.abs(endY - from.y) / t;
+    b.vz = (0.5 * L.G * t * t - b.z) / t;
+    b.bounceY = endY;
+    b.vx = (endX - from.x) / t;
+  } else if (kind === "net") {
     const t = rand(0.35, 0.5);
     b.vy = dir * Math.abs(L.net - from.y) / t;
     b.vz = (0.35 * L.netH - b.z + 0.5 * L.G * t * t) / t;
@@ -558,15 +577,16 @@ function playerShotOptions(attempt, stroke, grade, n, fx) {
   if (grade === "perfect") T *= 0.88;
   else if (grade === "good") T *= 0.95;
   if (attempt > 6) spinS = 0;
-  if (attempt > 4) fx = W / 2 + (fx - W / 2) * Math.max(0.3, 1 - 0.08 * (attempt - 4));
+  if (attempt > 3) fx = W / 2 + (fx - W / 2) * Math.max(0.3, 1 - 0.06 * (attempt - 3));
   return { spinT, spinS, fx, bounceY: L.net - L.half * depth, T };
 }
 
 // 时机 → 落点：连续曲线。早（负）打斜线，晚（正）打直线
+// 早晚两侧分别按击球区长度归一化，曲线前段更陡
 function aimX(te, dir) {
-  const u = clamp(te / 0.16, -1, 1);
-  const a = Math.sin(u * Math.PI / 2);
-  return W / 2 + dir * a * 0.42 * L.tw + rand(-0.04, 0.04) * L.tw;
+  const u = te < 0 ? clamp(te / ZE, -1, 0) : clamp(te / ZL, 0, 1);
+  const a = Math.sign(u) * (1 - Math.pow(1 - Math.abs(u), 1.8));
+  return { u, fx: W / 2 + dir * a * AIM_MAX * L.tw + rand(-0.03, 0.03) * L.tw };
 }
 
 // AI 失误率：体力（随回合板数）+ 压力（回球质量与跑动）
@@ -585,23 +605,30 @@ function perfWindow() {
 
 function spinColor(b) {
   if (!b) return "#555";
-  if (Math.abs(b.spinS) > 0.2 && Math.abs(b.spinS) >= Math.abs(b.spinT)) return PURPLE;
-  if (b.spinT > 0.15) return RED;
-  if (b.spinT < -0.15) return BLUE;
+  if (b.spinT > LIGHT) return RED;
+  if (b.spinT < -LIGHT) return BLUE;
+  if (Math.abs(b.spinS) > 0.2) return PURPLE;
   return "#555";
+}
+
+// 上/下旋看 spinT；纯侧旋看 spinS
+function isHeavy(b) {
+  if (!b) return false;
+  return Math.abs(b.spinT || 0) > LIGHT ? Math.abs(b.spinT) >= HEAVY : Math.abs(b.spinS || 0) >= HEAVY;
 }
 
 function spinName(o) {
   const sp = T("spin");
   const s = Math.abs(o.spinS) > 0.2 ? (o.spinS < 0 ? " ←" : " →") : "";
-  if (o.spinT > 0.2 && s) return sp.topSide + s;
-  if (o.spinT < -0.2 && s) return sp.backSide + s;
-  if (s) return sp.side + s;
-  if (o.spinT > 0.15) return sp.top;
-  if (o.spinT < -0.15) return sp.back;
-  return sp.flat;
+  let name;
+  if (o.spinT > 0.2 && s) name = sp.topSide + s;
+  else if (o.spinT < -0.2 && s) name = sp.backSide + s;
+  else if (s) name = sp.side + s;
+  else if (o.spinT > LIGHT) name = sp.top;
+  else if (o.spinT < -LIGHT) name = sp.back;
+  else return sp.flat;
+  return (isHeavy(o) ? T("heavy") : "") + name;
 }
-
 
 /* ================= 流程 ================= */
 
@@ -624,6 +651,7 @@ function resetMen() {
   player.lean = ai.lean = 0;
   player.swingT = ai.swingT = 9;
   player.returnT = ai.returnT = 0;
+  ai.delay = 0;
   player.fast = ai.fast = false;
 }
 
@@ -745,7 +773,18 @@ function aiHit() {
   }
 
   game.rally++;
-  const p = makeShot(from, true, i => aiShotOptions(i));
+  const wasWeak = ball.weak;
+  const p = makeShot(from, true, i => {
+    const o = aiShotOptions(i);
+    if (wasWeak && i < 12) {         // 机会球：AI 强攻
+      o.T *= 0.72;
+      o.spinT = rand(0.45, 0.7);
+      o.spinS *= 0.3;
+      o.fx = W / 2 + o.side * L.tw * rand(0.28, 0.42);
+      o.bounceY = L.net + L.half * rand(0.6, 0.88);
+    }
+    return o;
+  });
   if (!p) { endRally("player", "aiError"); return; }
   ball = p.ball;
   ball.side = p.side;
@@ -762,14 +801,29 @@ function launchPlayerShot(p, stroke, grade, press) {
   ball.hdir = -1;
   game.rally++;
   ai.dir = p.o.fx < W / 2 ? -1 : 1;
-  const proper = clamp(p.o.fx - ai.dir * L.reach, W * 0.06, W * 0.94);
-  const run = clamp(Math.abs(proper - ai.x) / (0.5 * L.tw), 0, 1);   // AI 需要跑动的距离
-  if (Math.random() < aiMissChance(press + run * 0.14)) {
-    ball.aiMiss = Math.random() < 0.55 ? "whiff" : "error";
-  }
-  ai.tx = ball.aiMiss === "whiff" ? lerp(ai.x, proper, 0.3) : proper;
+  const proper = clamp(p.o.fx - ai.dir * L.reach, W * 0.04, W * 0.96);
   ai.returnT = 0;
   ai.fast = false;
+
+  if (game.mode === "match") {
+    // 失位：AI 在反应时间之后以最大速度跑动，仍够不到就必丢
+    const cfg = LEVELS[game.level];
+    const tAvail = Math.max(0, p.rf.t - cfg.react);
+    const maxRun = cfg.aiSpeed * L.tw * tAvail + 14 * S;
+    const need = Math.abs(proper - ai.x);
+    ai.delay = cfg.react;
+    if (need > maxRun) {
+      ball.aiMiss = "outpos";
+    } else {
+      const run = need / maxRun;
+      if (Math.random() < aiMissChance(press + run * run * 0.15)) {
+        ball.aiMiss = Math.random() < 0.55 ? "whiff" : "error";
+      }
+    }
+    if (ball.aiMiss === "whiff") ai.delay += 0.25;
+  }
+  ai.tx = proper;
+
   SFX.hit(stroke, 1, grade);
   buzz(grade === "perfect" ? 30 : 12);
 }
@@ -803,37 +857,63 @@ function playerHit(dir, stroke, te) {
   player.tx = clamp(ball.x - dir * L.reach, W * 0.06, W * 0.94);
   player.returnT = 0.45;
 
-  // 吃转判定
+  // 吃转判定：标出来的旋转就要打对。轻旋转打错且 GOOD 以上 → 勉强回球；强旋转打错 → 失误
   const inc = ball.spinT || 0;
-  const th = grade === "perfect" ? 0.45 : 0.28;
-  let err = null;
-  if (inc > th && stroke !== "top") err = "out";
-  else if (inc < -th && stroke === "flat") err = "net";
-  else if (inc < -0.5 && stroke === "top" && grade !== "perfect") err = "net";
+  const heavy = Math.abs(inc) >= HEAVY;
+  let wrong = null;
+  if (inc > LIGHT && stroke !== "top") wrong = "out";
+  else if (inc < -LIGHT && stroke === "flat") wrong = "net";
+  let err = null, weak = false;
+  if (wrong) { if (heavy || !grade) err = wrong; else weak = true; }
+  else if (inc <= -HEAVY && stroke === "top" && !grade) err = "net";   // 拉强下旋需要时机
+
+  const aim = aimX(te, dir);
+  // 大角度风险：极早或极晚且未达 GOOD，可能出边线
+  if (!err && !weak && !grade && Math.abs(aim.u) > 0.8 && Math.random() < (Math.abs(aim.u) - 0.8) / 0.2 * 0.5) err = "wide";
 
   const from = { x: ball.x, y: ball.y, z: Math.max(ball.z, L.netH * 0.9) };
   effects.push({ type: "burst", x: from.x, y: from.y - from.z, t: 0, dur: 0.25 });
 
   if (err) {
-    ball = makeErrorShot(from, "player", err, stroke === "top" ? 0.5 : stroke === "chop" ? -0.5 : 0);
+    ball = makeErrorShot(from, "player", err, stroke === "top" ? 0.5 : stroke === "chop" ? -0.5 : 0, Math.sign(aim.fx - W / 2));
     SFX.hit(stroke);
     buzz(12);
-    effects.push({ type: "text", x: W / 2, y: L.tb + 22 * S, text: T(inc > 0 ? "eatTop" : "eatBack"), color: inc > 0 ? RED : BLUE, size: 18, t: 0, dur: 0.9 });
+    if (err !== "wide") {
+      effects.push({ type: "text", x: W / 2, y: L.tb + 22 * S, text: T(inc > 0 ? "eatTop" : "eatBack"), color: inc > 0 ? RED : BLUE, size: 18, t: 0, dur: 0.9 });
+    }
     return;
   }
 
   if (game.mode === "practice") { game.score++; updateScore(); }
   if (++hintHits === 3) hintsEl.classList.add("gone");
 
-  const fx = aimX(te, dir);
-  const p = makeShot(from, false, i => playerShotOptions(i, stroke, grade, level(), fx));
+  let p;
+  if (weak) {
+    // 勉强回球：慢、高、偏中路，AI 下一板会强攻
+    const fx = W / 2 + (aim.fx - W / 2) * 0.3;
+    p = makeShot(from, false, i => {
+      const o = playerShotOptions(i, "flat", null, level(), fx);
+      o.T *= 1.3; o.spinS = 0; o.bounceY = L.net - L.half * rand(0.5, 0.8);
+      return o;
+    });
+  } else {
+    p = makeShot(from, false, i => playerShotOptions(i, stroke, grade, level(), aim.fx));
+  }
   if (!p) { lose("error"); return; }
 
-  let press = 0.02 + (grade === "perfect" ? 0.07 : grade === "good" ? 0.03 : 0);
-  if (stroke === "top") press += 0.02;
-  if (stroke === "top" && inc < -th) press += 0.05;
-  if (stroke === "flat" && Math.abs(inc) <= th) press += 0.04;
-  launchPlayerShot(p, stroke, grade, press);
+  let press = 0;
+  if (!weak) {
+    press = 0.02 + (grade === "perfect" ? 0.07 : grade === "good" ? 0.03 : 0);
+    if (stroke === "top") press += 0.02;
+    if (stroke === "top" && inc < -LIGHT) press += 0.05;
+    if (stroke === "flat" && Math.abs(inc) <= LIGHT) press += 0.04;
+  }
+  launchPlayerShot(p, stroke, weak ? null : grade, press);
+  if (weak) {
+    ball.weak = true;
+    effects.push({ type: "text", x: W / 2, y: L.tb + 22 * S, text: T("weak"), color: inc > 0 ? RED : BLUE, size: 16, t: 0, dur: 0.8 });
+    return;
+  }
 
   if (grade) {
     effects.push({ type: "text", x: player.tx, y: L.playerY - 86 * S, text: grade === "perfect" ? "PERFECT" : "GOOD", color: INK, size: grade === "perfect" ? 18 : 15, t: 0, dur: 0.6 });
@@ -921,13 +1001,12 @@ function physicsStep() {
       if (!holding) lose("missed");
     }
   } else if (!b.error && b.y <= L.aiHitY) {
-    if (b.aiMiss === "whiff") {
+    if (b.aiMiss === "whiff" || b.aiMiss === "outpos") {
       if (!b.whiffed) {
         b.whiffed = true;
-        ai.swingT = 0; ai.stroke = "top"; ai.fast = true;
-        ai.tx = clamp(b.x - ai.dir * L.reach, W * 0.06, W * 0.94);
+        ai.swingT = 0; ai.stroke = "top";
       }
-      if (b.y < L.aiY - 50 * S) endRally("player", "aiMissed");
+      if (b.y < L.aiY - 50 * S) endRally("player", b.aiMiss === "outpos" ? "aiOutPos" : "aiMissed");
     } else {
       aiHit();
     }
@@ -945,6 +1024,26 @@ function moveMan(e, dt, rateNormal) {
   e.x = nx;
   if (Math.abs(e.tx - e.x) < 1.5) e.fast = false;
   const targetLean = clamp(e.vx / (1400 * S), -0.4, 0.4);
+  e.lean += (targetLean - e.lean) * (1 - Math.exp(-14 * dt));
+  e.swingT += dt;
+}
+
+// 11 分赛：AI 有反应时间和最大移动速度
+function moveAI(dt) {
+  const e = ai, cfg = LEVELS[game.level];
+  if (e.returnT > 0) {
+    e.returnT -= dt;
+    if (e.returnT <= 0) e.tx = W / 2;
+  }
+  let nx = e.x;
+  if (e.delay > 0) e.delay -= dt;
+  else {
+    const max = cfg.aiSpeed * L.tw * dt;
+    nx = e.x + clamp(e.tx - e.x, -max, max);
+  }
+  e.vx = dt > 0 ? (nx - e.x) / dt : 0;
+  e.x = nx;
+  const targetLean = clamp(e.vx / (700 * S), -0.4, 0.4);
   e.lean += (targetLean - e.lean) * (1 - Math.exp(-14 * dt));
   e.swingT += dt;
 }
@@ -981,7 +1080,7 @@ function update(dt) {
   } else acc = 0;
 
   moveMan(player, pdt, 7);
-  moveMan(ai, pdt, 9);
+  if (game.mode === "match") moveAI(pdt); else moveMan(ai, pdt, 9);
 
   for (let i = effects.length - 1; i >= 0; i--) {
     effects[i].t += pdt;
@@ -1090,10 +1189,11 @@ function drawBall() {
   if (trail.length > 1) {
     ctx.lineCap = "round";
     ctx.strokeStyle = col;
+    const hv = isHeavy(b);
     for (let i = 1; i < trail.length; i++) {
       const a = i / trail.length;
-      ctx.globalAlpha = a * 0.35;
-      ctx.lineWidth = r * 1.5 * a;
+      ctx.globalAlpha = a * (hv ? 0.6 : 0.22);
+      ctx.lineWidth = r * (hv ? 1.8 : 1.2) * a;
       ctx.beginPath(); ctx.moveTo(trail[i - 1].x, trail[i - 1].y); ctx.lineTo(trail[i].x, trail[i].y); ctx.stroke();
     }
     ctx.globalAlpha = 1;
