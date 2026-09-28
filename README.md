@@ -2,6 +2,8 @@
 Here's some not-serious programs that might get your attention. I love to make my interesting ideas work. feel free to take them away and recreate these ideas yourself!
 
 # Stickman Ping Pong
+(inspired by "I'm ping pong king" in 2018 by Orangenose Studio)
+(this whole purpose of the program is to remake "pingpong king" game, ive been wanting to play it and its so sad its been taken down form ios app store)
 
 A minimalist table tennis game that runs in any modern browser, on desktop or mobile. You play as a stickman, and your goal is to read the spin on each incoming ball and return it with the right stroke, at the right time, on the right side.
 
