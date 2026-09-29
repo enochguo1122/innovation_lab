@@ -49,7 +49,30 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
     padding: 24px; background: rgba(244, 196, 48, .96); text-align: center;
   }
-  #menu[hidden], .corner[hidden], .panel[hidden], #help[hidden] { display: none; }
+  #menu[hidden], .corner[hidden], .panel[hidden], #help[hidden], #intro[hidden], .line[hidden] { display: none; }
+  #intro {
+    position: fixed; inset: 0; z-index: 9;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    padding: 24px; background: rgba(244, 196, 48, .96); cursor: pointer;
+  }
+  #intro .line { display: flex; align-items: center; gap: 12px; width: min(380px, 92vw); animation: pop .18s ease-out; }
+  #intro .line.b { justify-content: flex-end; }
+  #intro .head { width: 46px; height: 46px; flex: none; }
+  #intro .bubble {
+    position: relative; background: #fff; border: 3px solid var(--ink); border-radius: 14px;
+    padding: 10px 14px; font-size: 16px; font-weight: bold; line-height: 1.45;
+  }
+  #intro .a .bubble::before, #intro .b .bubble::before {
+    content: ""; position: absolute; top: 50%; width: 12px; height: 12px; background: #fff;
+    border: 3px solid var(--ink); transform: translateY(-50%) rotate(45deg);
+  }
+  #intro .a .bubble::before { left: -8px; border-top: none; border-right: none; }
+  #intro .b .bubble::before { right: -8px; border-bottom: none; border-left: none; }
+  #introSkip {
+    position: absolute; right: 20px; bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+    font-size: 14px; font-weight: bold; opacity: .55; padding: 8px;
+  }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   #menu h1 { font-size: 30px; margin: 0 0 10px; }
   .modeBtn {
     width: min(260px, 78vw); padding: 14px 0;
@@ -132,6 +155,18 @@
 
 <div id="help" hidden><div class="panel" id="helpText"></div></div>
 
+<div id="intro" hidden>
+  <div class="line a">
+    <svg class="head" viewBox="0 0 46 46" style="color:#666"><circle cx="23" cy="23" r="18" fill="none" stroke="currentColor" stroke-width="5"/></svg>
+    <div class="bubble" id="introA"></div>
+  </div>
+  <div class="line b" id="introLineB" hidden>
+    <div class="bubble" id="introB"></div>
+    <svg class="head" id="introHeadB" viewBox="0 0 46 46"><circle cx="23" cy="23" r="18" fill="none" stroke="currentColor" stroke-width="5"/></svg>
+  </div>
+  <div id="introSkip"></div>
+</div>
+
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -144,6 +179,7 @@ const helpBtn = document.getElementById("helpBtn");
 const langBtn = document.getElementById("langBtn");
 const helpEl = document.getElementById("help");
 const hintsEl = document.getElementById("hints");
+const introEl = document.getElementById("intro");
 const soundBtn = document.getElementById("soundBtn");
 
 let INK = "#111", BG = "#f4c430";
@@ -151,8 +187,10 @@ const CHAR_COLOR = { zhu: "#2563eb", wang: "#d62828" };
 
 const I18N = {
   zh: {
-    match: "11 分赛", practice: "练习",
+    match: "11 分赛", practice: "无尽模式",
     chars: { normal: "普通", zhu: "老朱", wang: "王大力" },
+    introA: "听说大学乒乓球部今年有个新生，谁都打不过他，好像姓马？",
+    introB: "真的？我去会会他", skip: "跳过 ›",
     lv: ["一级", "二级", "三级", "四级"],
     lvDesc: ["AI 不打旋转，球速慢", "AI 会打上旋和下旋", "全部旋转，相持更久", "球更快，AI 会打你的空当"],
     help: ["点左 / 右半屏：平击", "上滑：拉上旋　下滑：搓下旋",
@@ -173,8 +211,10 @@ const I18N = {
     spin: { top: "上旋", back: "下旋", side: "侧旋", topSide: "侧上旋", backSide: "侧下旋", flat: "平击" }
   },
   en: {
-    match: "Match to 11", practice: "Practice",
-    chars: { normal: "Classic", zhu: "Lao Zhu", wang: "Wang Dali" },
+    match: "Match to 11", practice: "Endless",
+    chars: { normal: "Classic", zhu: "JOO", wang: "WANG" },
+    introA: "Heard the uni table tennis club got a freshman nobody can beat. His name's Ma, I think?",
+    introB: "Really? I'll go take him on.", skip: "Skip ›",
     lv: ["Lv 1", "Lv 2", "Lv 3", "Lv 4"],
     lvDesc: ["No spin, slow balls", "Topspin and backspin", "All spins, longer rallies", "Faster, hits to open space"],
     help: ["Tap left / right half: flat hit", "Swipe up: topspin　Swipe down: backspin",
@@ -183,8 +223,8 @@ const I18N = {
            "Topspin needs a topspin stroke, backspin needs a chop",
            "Wrong stroke on light spin: weak return. On heavy spin: point lost",
            "A high ball from the AI is a smash chance",
-           "Lao Zhu: swipe down chops back any topspin; 3 PERFECT chops force a high ball",
-           "Wang Dali: his topspin beats any spin, and rallies keep speeding up",
+           "JOO: swipe down chops back any topspin; 3 PERFECT chops force a high ball",
+           "WANG: his topspin beats any spin, and rallies keep speeding up",
            "Keys: A D flat, Q E topspin, Z C backspin"],
     swipe: "↑ topspin　↓ backspin",
     youServe: "You serve", aiServe: "AI serves", serveTip: "Tap or swipe to serve",
@@ -1726,11 +1766,12 @@ window.addEventListener("keydown", e => {
   if (e.repeat) return;
   const k = e.key.toLowerCase();
   ensureAudio();
+  if (!introEl.hidden) { if (k === "escape") endIntro(); else advanceIntro(); return; }
   if (k === "escape") { if (!helpEl.hidden) helpEl.hidden = true; else toIdle(); return; }
   if (game.state === "idle") {
     if (LEVELS[+k]) setLevel(+k);
     else if (k === "enter") startMode("match");
-    else if (k === "p") startMode("practice");
+    else if (k === "p") openMode("practice");
     return;
   }
   if (game.state === "over") {
@@ -1742,7 +1783,7 @@ window.addEventListener("keydown", e => {
 });
 
 document.querySelectorAll(".modeBtn").forEach(btn => {
-  btn.addEventListener("click", () => { btn.blur(); startMode(btn.dataset.mode); });
+  btn.addEventListener("click", () => { btn.blur(); openMode(btn.dataset.mode); });
 });
 menuBtn.addEventListener("click", () => { menuBtn.blur(); toIdle(); });
 
@@ -1777,6 +1818,48 @@ function setChar(c) {
   charButtons.forEach(b => b.classList.toggle("on", b.dataset.char === c));
 }
 charButtons.forEach(b => b.addEventListener("click", () => { b.blur(); setChar(b.dataset.char); }));
+
+/* 进入无尽模式前的小对话，点击推进 / 跳过，2.6 秒自动推进 */
+let introStep = 0, introDone = null, introTimer = null;
+function showIntro(done) {
+  introDone = done;
+  introStep = 0;
+  document.getElementById("introA").textContent = T("introA");
+  document.getElementById("introB").textContent = T("introB");
+  document.getElementById("introSkip").textContent = T("skip");
+  document.getElementById("introHeadB").style.color = playerColor();
+  document.getElementById("introLineB").hidden = true;
+  menuEl.hidden = true;
+  introEl.hidden = false;
+  clearTimeout(introTimer);
+  introTimer = setTimeout(advanceIntro, 2600);
+}
+function advanceIntro() {
+  if (introEl.hidden) return;
+  if (introStep === 0) {
+    introStep = 1;
+    document.getElementById("introLineB").hidden = false;
+    clearTimeout(introTimer);
+    introTimer = setTimeout(advanceIntro, 2000);
+  } else endIntro();
+}
+function endIntro() {
+  clearTimeout(introTimer);
+  if (introEl.hidden) return;
+  introEl.hidden = true;
+  const d = introDone; introDone = null;
+  if (d) d();
+}
+introEl.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  ensureAudio();
+  if (e.target.id === "introSkip") endIntro(); else advanceIntro();
+});
+
+function openMode(mode) {
+  if (mode === "practice") showIntro(() => startMode("practice"));
+  else startMode(mode);
+}
 
 function applyLang() {
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
