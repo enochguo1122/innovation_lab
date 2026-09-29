@@ -59,6 +59,15 @@
   }
   .modeBtn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #levels { display: flex; gap: 8px; margin-bottom: 14px; }
+  #chars { display: flex; gap: 8px; margin-bottom: 8px; }
+  #chars button {
+    display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px;
+    border: 3px solid var(--ink); border-radius: 19px; background: transparent; color: var(--ink);
+    font: bold 14px Arial, "PingFang SC", sans-serif; cursor: pointer;
+  }
+  #chars button.on { background: #fff; }
+  #chars button:focus-visible { outline: 3px dashed var(--ink); outline-offset: 2px; }
+  #chars .dot { width: 12px; height: 12px; border-radius: 50%; }
   #levels button, .iconBtn {
     width: 38px; height: 38px; border: 3px solid var(--ink); border-radius: 10px;
     background: transparent; color: var(--ink); font: bold 16px Arial, sans-serif; cursor: pointer;
@@ -107,6 +116,11 @@
 
 <div id="menu">
   <h1>Stickman Ping Pong</h1>
+  <div id="chars">
+    <button data-char="normal"><span class="dot" style="background:#111"></span><span data-i18n-char="normal"></span></button>
+    <button data-char="zhu"><span class="dot" style="background:#2563eb"></span><span data-i18n-char="zhu"></span></button>
+    <button data-char="wang"><span class="dot" style="background:#d62828"></span><span data-i18n-char="wang"></span></button>
+  </div>
   <button class="modeBtn" data-mode="match" data-i18n="match"></button>
   <div id="levels">
     <button data-lv="1">1</button><button data-lv="2">2</button><button data-lv="3">3</button><button data-lv="4">4</button>
@@ -132,19 +146,23 @@ const helpEl = document.getElementById("help");
 const hintsEl = document.getElementById("hints");
 const soundBtn = document.getElementById("soundBtn");
 
-const INK = "#111", BG = "#f4c430";
+let INK = "#111", BG = "#f4c430";
+const CHAR_COLOR = { zhu: "#2563eb", wang: "#d62828" };
 
 const I18N = {
   zh: {
     match: "11 分赛", practice: "练习",
+    chars: { normal: "普通", zhu: "老朱", wang: "王大力" },
     lv: ["一级", "二级", "三级", "四级"],
     lvDesc: ["AI 不打旋转，球速慢", "AI 会打上旋和下旋", "全部旋转，相持更久", "球更快，AI 会打你的空当"],
     help: ["点左 / 右半屏：平击", "上滑：拉上旋　下滑：搓下旋",
            "早打斜线，晚打直线；晚打能压到边线",
            "条纹转得越快、拖尾越深，旋转越强",
-           "平击接上旋出界，接下旋下网；搓上旋出界",
-           "轻旋转打错会勉强回球，强旋转打错必失误",
+           "上旋要拉，下旋要搓",
+           "打错轻旋转会勉强回球，打错强旋转会失误",
            "对方回高球时是扣杀机会",
+           "老朱：下滑是削球，能削回任何上旋；3 次 PERFECT 削球逼出高球",
+           "王大力：拉球不怕任何旋转，越打越快",
            "键盘：A D 平击，Q E 拉，Z C 搓"],
     swipe: "↑ 拉　↓ 搓",
     youServe: "你发球", aiServe: "AI 发球", serveTip: "点击或滑动发球",
@@ -156,14 +174,17 @@ const I18N = {
   },
   en: {
     match: "Match to 11", practice: "Practice",
+    chars: { normal: "Classic", zhu: "Lao Zhu", wang: "Wang Dali" },
     lv: ["Lv 1", "Lv 2", "Lv 3", "Lv 4"],
     lvDesc: ["No spin, slow balls", "Topspin and backspin", "All spins, longer rallies", "Faster, hits to open space"],
     help: ["Tap left / right half: flat hit", "Swipe up: topspin　Swipe down: backspin",
            "Early goes cross-court, late goes down the line to the sideline",
            "Faster stripes and a darker trail mean heavier spin",
-           "Flat vs topspin goes long, vs backspin hits the net; backspin vs topspin goes long",
+           "Topspin needs a topspin stroke, backspin needs a chop",
            "Wrong stroke on light spin: weak return. On heavy spin: point lost",
            "A high ball from the AI is a smash chance",
+           "Lao Zhu: swipe down chops back any topspin; 3 PERFECT chops force a high ball",
+           "Wang Dali: his topspin beats any spin, and rallies keep speeding up",
            "Keys: A D flat, Q E topspin, Z C backspin"],
     swipe: "↑ topspin　↓ backspin",
     youServe: "You serve", aiServe: "AI serves", serveTip: "Tap or swipe to serve",
@@ -226,9 +247,12 @@ const game = {
   mode: "practice", state: "idle", level: 2, rally: 0,
   score: 0, best: 0, p: 0, a: 0, server: "ai", winner: null,
   overT: 0, serveT: 0, deadT: 0, time: 0,
-  shake: 0, hitstop: 0, slowmo: 0, focus: 0
+  shake: 0, hitstop: 0, slowmo: 0, focus: 0,
+  char: "normal", combo: 0, comboT: 9, tempo: 0, zhuDots: 0, zhuSlow: 0,
+  zoom: 0, impact: 0, boost: 0
 };
 try { game.best = +localStorage.getItem("spp_best") || 0; } catch (e) {}
+try { const c = localStorage.getItem("spp_char"); if (c === "normal" || c === "zhu" || c === "wang") game.char = c; } catch (e) {}
 try { const lv = +localStorage.getItem("spp_level"); if (LEVELS[lv]) game.level = lv; } catch (e) {}
 
 function makeMan() { return { x: 0, tx: 0, y: 0, vx: 0, lean: 0, dir: 1, stroke: "top", swingT: 9, returnT: 0, fast: false }; }
@@ -244,7 +268,7 @@ const trail = [];
 
 /* ================= 声音 ================= */
 
-let actx = null, noiseBuf = null, muted = false;
+let actx = null, noiseBuf = null, master = null, masterLP = null, muted = false;
 try { muted = localStorage.getItem("spp_muted") === "1"; } catch (e) {}
 
 function ensureAudio() {
@@ -253,7 +277,11 @@ function ensureAudio() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       actx = new AC();
-      const n = Math.floor(actx.sampleRate * 0.05);
+      masterLP = actx.createBiquadFilter();
+      masterLP.type = "lowpass"; masterLP.frequency.value = 20000;
+      masterLP.connect(actx.destination);
+      master = masterLP;
+      const n = Math.floor(actx.sampleRate * 0.25);
       noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
       const d = noiseBuf.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
@@ -267,7 +295,7 @@ function blip(o) {
   const t = actx.currentTime + (o.delay || 0);
   const out = actx.createBiquadFilter();
   out.type = "lowpass"; out.frequency.value = o.lp || 8000;
-  out.connect(actx.destination);
+  out.connect(master);
 
   const g = actx.createGain();
   g.gain.setValueAtTime(o.vol, t);
@@ -306,6 +334,18 @@ const SFX = {
   bounce(onTable) {
     blip(onTable ? { f: 950, f2: 650, dur: .05, vol: .28, noise: .5, nf: 2500, lp: 5000 }
                  : { f: 420, f2: 300, dur: .06, vol: .18, noise: .3, nf: 1200, lp: 2000 });
+  },
+  whoosh() {
+    if (!actx || muted) return;
+    const t = actx.currentTime;
+    const src = actx.createBufferSource(); src.buffer = noiseBuf;
+    const bp = actx.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.5;
+    bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(5000, t + 0.12);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0008, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.16);
+    src.connect(bp); bp.connect(g); g.connect(master);
+    src.start(t); src.stop(t + 0.2);
   },
   smash() {
     blip({ f: 1900, f2: 650, dur: .1, vol: .45, noise: 1, nf: 5200, lp: 11000 });
@@ -653,6 +693,21 @@ function spinName(o) {
   return (isHeavy(o) ? T("heavy") : "") + name;
 }
 
+/* ================= 角色 ================= */
+
+function playerColor() { return CHAR_COLOR[game.char] || INK; }
+
+// 该打法接这个来球是否"打错"：返回 "out" / "net" / null
+function wrongStroke(inc, stroke) {
+  if (game.char === "wang" && stroke === "top") return null;        // 王大力：拉球不怕任何旋转
+  if (inc > LIGHT && stroke !== "top") {
+    if (game.char === "zhu" && stroke === "chop") return null;      // 老朱：削球接上旋
+    return "out";
+  }
+  if (inc < -LIGHT && stroke !== "chop") return "net";
+  return null;
+}
+
 /* ================= 流程 ================= */
 
 function updateScore() {
@@ -674,7 +729,7 @@ function resetMen() {
   player.lean = ai.lean = 0;
   player.swingT = ai.swingT = 9;
   player.returnT = ai.returnT = 0;
-  ai.delay = 0;
+  ai.delay = 0; ai.dive = 0;
   player.fast = ai.fast = false;
 }
 
@@ -699,6 +754,7 @@ function startMode(mode) {
   helpEl.hidden = true;
   lvInfo.hidden = true; lvInfoBtn.classList.remove("on");
   game.score = 0; game.p = 0; game.a = 0;
+  game.combo = 0; game.zhuDots = 0;
   effects.length = 0;
   setupServe();
 }
@@ -717,6 +773,8 @@ function setupServe() {
   pending = null; gesture = null;
   trail.length = 0;
   game.rally = 0;
+  game.tempo = 0;
+  game.focus = 0; game.zhuSlow = 0; game.zoom = 0;
   const base = { vx: 0, vy: 0, vz: 0, still: true, spin: 0, spinT: 0, spinS: 0, bounced: false, toPlayer: false };
   if (game.server === "ai") {
     ai.dir = Math.random() < .5 ? -1 : 1;
@@ -756,6 +814,7 @@ function endRally(winner, reason) { // 11 分赛的一分结束
 }
 
 function lose(reason) {
+  game.combo = 0;
   if (game.mode === "practice") fail(reason);
   else endRally("ai", reason);
 }
@@ -798,8 +857,10 @@ function aiHit() {
   game.rally++;
   const wasWeak = ball.weak;
   const chance = !!ball.aiChance;
+  const tempoK = game.char === "wang" ? Math.max(0.7, 1 - 0.03 * game.tempo) : 1;
   const p = makeShot(from, true, i => {
     const o = aiShotOptions(i);
+    o.T *= tempoK;                   // 王大力：越打越快
     if (chance) {                    // AI 被动回高球 → 扣杀机会
       o.spinT = rand(-0.05, 0.05); o.spinS = 0;
       o.T = Math.max(o.T, 1.0) * 1.2;
@@ -861,7 +922,7 @@ function launchPlayerShot(p, stroke, grade, press) {
   ai.tx = proper;
 
   const streak = game.mode === "practice" ? game.score : Math.floor(game.rally / 2);
-  SFX.hit(stroke, 1, grade, 1 + Math.min(streak, 30) * 0.01);
+  SFX.hit(stroke, 1, grade, 1 + Math.min(streak, 30) * (game.char === "wang" ? 0.02 : 0.01));
   buzz(grade === "perfect" ? 30 : 12);
 }
 
@@ -890,7 +951,8 @@ function playerHit(dir, stroke, te) {
 
   // 时间判定：te < 0 为早，te > 0 为晚（秒）
   const [pw, gw] = perfWindow();
-  const grade = Math.abs(te) <= pw ? "perfect" : Math.abs(te) <= gw ? "good" : null;
+  let grade = Math.abs(te) <= pw ? "perfect" : Math.abs(te) <= gw ? "good" : null;
+  if (game.char === "wang" && stroke === "top" && !ball.chance) grade = "perfect";   // 王大力：拉球必 PERFECT
   player.tx = clamp(ball.x - dir * L.reach, W * 0.06, W * 0.94);
   player.returnT = 0.45;
 
@@ -899,9 +961,7 @@ function playerHit(dir, stroke, te) {
   // 吃转判定：轻旋转打错 → 勉强回球；强旋转打错 → 失误
   const inc = ball.spinT || 0;
   const heavy = Math.abs(inc) >= HEAVY;
-  let wrong = null;
-  if (inc > LIGHT && stroke !== "top") wrong = "out";
-  else if (inc < -LIGHT && stroke === "flat") wrong = "net";
+  const wrong = wrongStroke(inc, stroke);
   let err = null, weak = false;
   if (wrong) { if (heavy) err = wrong; else weak = true; }
 
@@ -912,6 +972,7 @@ function playerHit(dir, stroke, te) {
 
   if (err) {
     ball = makeErrorShot(from, "player", err, stroke === "top" ? 0.5 : stroke === "chop" ? -0.5 : 0, Math.sign(aim.bx - W / 2));
+    game.combo = 0;
     SFX.hit(stroke);
     buzz(12);
     effects.push({ type: "text", x: W / 2, y: L.tb + 22 * S, text: T(inc > 0 ? "eatTop" : "eatBack"), color: inc > 0 ? RED : BLUE, size: 18, t: 0, dur: 0.9 });
@@ -930,8 +991,20 @@ function playerHit(dir, stroke, te) {
       o.T *= 1.3; o.spinS = 0; o.bounceY = L.net - L.half * rand(0.5, 0.8);
       return o;
     });
+  } else if (game.char === "zhu" && stroke === "chop") {
+    // 老朱削球：强下旋 + 往外侧拐的侧旋
+    p = makeShot(from, false, i => {
+      const o = playerShotOptions(i, "chop", grade, level(), aim.bx);
+      o.spinT = -rand(0.5, 0.7);
+      o.spinS = i > 5 ? 0 : dir * rand(0.3, 0.5) * (i > 2 ? 0.4 : 1);
+      return o;
+    });
   } else {
-    p = makeShot(from, false, i => playerShotOptions(i, stroke, grade, level(), aim.bx));
+    p = makeShot(from, false, i => {
+      const o = playerShotOptions(i, stroke, grade, level(), aim.bx);
+      if (game.char === "wang" && stroke === "top") o.T *= 0.85;   // 王大力拉球更快
+      return o;
+    });
   }
   if (!p) { lose("error"); return; }
 
@@ -945,14 +1018,27 @@ function playerHit(dir, stroke, te) {
   launchPlayerShot(p, stroke, weak ? null : grade, press);
   if (weak) {
     ball.weak = true;
+    game.combo = 0;
     effects.push({ type: "text", x: W / 2, y: L.tb + 22 * S, text: T("weak"), color: inc > 0 ? RED : BLUE, size: 16, t: 0, dur: 0.8 });
     return;
   }
 
-  if (grade) {
-    effects.push({ type: "text", x: player.tx, y: L.playerY - 86 * S, text: grade === "perfect" ? "PERFECT" : "GOOD", color: INK, size: grade === "perfect" ? 18 : 15, t: 0, dur: 0.6 });
+  // PERFECT 连击
+  if (grade === "perfect") { game.combo++; game.comboT = 0; } else game.combo = 0;
+
+  if (game.char === "wang" && stroke === "top") game.tempo++;
+
+  // 老朱：3 次 PERFECT 削球 → AI 必回高球
+  if (game.char === "zhu" && stroke === "chop" && grade === "perfect") {
+    game.zhuDots++;
+    if (game.zhuDots >= 3) {
+      game.zhuDots = 0;
+      if (ball.aiMiss !== "outpos") { ball.aiMiss = null; ball.aiChance = true; }
+    }
   }
-  if (grade === "perfect") {
+
+  // 真正打准的 PERFECT 才有顿帧；王大力的拉球保持连贯节奏
+  if (grade === "perfect" && !(game.char === "wang" && stroke === "top")) {
     game.shake = 2 * S;
     game.hitstop = 0.05;
     game.slowmo = 0.12;
@@ -974,12 +1060,24 @@ function smash(dir, te) {
   if (!p) { lose("error"); return; }
   launchPlayerShot(p, "top", "perfect", 0);
   ball.aiChance = false;
+  ball.smash = true;
+  ball.e = 1.05; ball.G2 = L.G * 0.8;          // 落台后弹高飞出
   if (game.mode === "match") { ball.aiMiss = "smashed"; ai.delay += 0.15; }
+  game.combo++; game.comboT = 0;
+
+  // 击球瞬间：声音由闷变清亮、冲击帧、镜头回弹、快慢对比
+  if (masterLP) { masterLP.frequency.cancelScheduledValues(actx.currentTime); masterLP.frequency.setValueAtTime(20000, actx.currentTime); }
+  SFX.whoosh();
   SFX.smash();
   buzz(40);
+  game.focus = 0;
   game.hitstop = 0.08;
+  game.impact = 0.06;
+  game.zoom = -0.02;
+  game.boost = 0.1;
   game.shake = 5 * S;
-  effects.push({ type: "text", x: player.tx, y: L.playerY - 86 * S, text: T("smash"), color: INK, size: 20, t: 0, dur: 0.7 });
+  trail.length = 0;
+  effects.push({ type: "speed", t: 0, dur: 0.3 });
 }
 
 // 球到击球线的时间差（秒）：负为早，正为晚
@@ -1024,8 +1122,15 @@ function physicsStep() {
 
   if (!wasB && b.bounced) {
     const onTable = b.y > L.tt && b.y < L.tb && b.x > L.tl && b.x < L.tr;
-    effects.push({ type: "ring", x: b.x, y: b.y, t: 0, dur: 0.35 });
-    SFX.bounce(onTable);
+    if (b.smash) {
+      effects.push({ type: "bigring", x: b.x, y: b.y, t: 0, dur: 0.45 });
+      effects.push({ type: "splat", x: b.x, y: b.y, t: 0, dur: 0.4, seed: Math.random() * 10 });
+      game.shake = Math.max(game.shake, 3 * S);
+      SFX.bounce(true); SFX.bounce(true);
+    } else {
+      effects.push({ type: "ring", x: b.x, y: b.y, t: 0, dur: 0.35 });
+      SFX.bounce(onTable);
+    }
     if (b.error === "out" && !b.resolved) { b.resolved = true; rallyError(b, "out"); }
   } else if ((b.fb || 0) > fb && b.fb <= 2) {
     SFX.bounce(false);
@@ -1062,6 +1167,10 @@ function physicsStep() {
       if (!b.whiffed) {
         b.whiffed = true;
         ai.swingT = 0; ai.stroke = "top";
+        if (b.aiMiss === "smashed") {   // 扑救
+          ai.dive = 0.5;
+          ai.tx = clamp(b.x - ai.dir * L.reach * 0.6, W * 0.04, W * 0.96);
+        }
       }
       if (b.y < L.aiY - 50 * S) endRally("player", b.aiMiss === "outpos" ? "aiOutPos" : b.aiMiss === "smashed" ? "smash" : "aiMissed");
     } else {
@@ -1093,14 +1202,16 @@ function moveAI(dt) {
     if (e.returnT <= 0) e.tx = W / 2;
   }
   let nx = e.x;
-  if (e.delay > 0) e.delay -= dt;
+  const diving = e.dive > 0;
+  if (diving) e.dive -= dt;
+  if (e.delay > 0 && !diving) e.delay -= dt;
   else {
-    const max = cfg.aiSpeed * L.tw * dt;
+    const max = cfg.aiSpeed * L.tw * dt * (diving ? 2.5 : 1);
     nx = e.x + clamp(e.tx - e.x, -max, max);
   }
   e.vx = dt > 0 ? (nx - e.x) / dt : 0;
   e.x = nx;
-  const targetLean = clamp(e.vx / (700 * S), -0.4, 0.4);
+  const targetLean = diving ? Math.sign(e.tx - e.x || 1) * 0.7 : clamp(e.vx / (700 * S), -0.4, 0.4);
   e.lean += (targetLean - e.lean) * (1 - Math.exp(-14 * dt));
   e.swingT += dt;
 }
@@ -1115,10 +1226,25 @@ function update(dt) {
   const wantFocus = game.state === "play" && ball && ball.chance && ball.toPlayer && ball.bounced && !ball.error ? 1 : 0;
   game.focus += (wantFocus - game.focus) * (1 - Math.exp(-(wantFocus ? 14 : 8) * dt));
 
+  // 老朱：强上旋在他这边落台后放慢（不压暗）
+  const wantZhu = game.char === "zhu" && game.state === "play" && ball && ball.toPlayer && ball.bounced &&
+    !ball.error && !ball.chance && (ball.spinT || 0) >= HEAVY && timing(ball) <= ZL ? 1 : 0;
+  game.zhuSlow += (wantZhu - game.zhuSlow) * (1 - Math.exp(-(wantZhu ? 12 : 16) * dt));
+
+  // 镜头：扣杀机会时缓慢推近，击球后快速回弹
+  const zoomTarget = game.focus * 0.04;
+  game.zoom += (zoomTarget - game.zoom) * (1 - Math.exp(-(game.focus > 0.05 ? 5 : 18) * dt));
+  if (game.impact > 0) game.impact -= dt;
+
+  // 慢动作时声音变闷
+  if (masterLP && actx) masterLP.frequency.setTargetAtTime(lerp(20000, 1100, game.focus), actx.currentTime, 0.03);
+
   let pdt = dt;
   if (game.hitstop > 0) { game.hitstop -= dt; pdt = 0; }
+  else if (game.boost > 0) { game.boost -= dt; pdt = dt * 1.3; }
   else if (game.slowmo > 0) { game.slowmo -= dt; pdt = dt * 0.35; }
-  pdt *= lerp(1, 0.4, game.focus);
+  pdt *= lerp(1, 0.4, game.focus) * lerp(1, 0.6, game.zhuSlow);
+  game.comboT += dt;
 
   if (game.state === "serve") {
     if (ball) {
@@ -1153,7 +1279,7 @@ function update(dt) {
   if (ball && !ball.still) {
     if (pdt > 0) {
       trail.push({ x: ball.x, y: ball.y - ball.z });
-      if (trail.length > 14) trail.shift();
+      if (trail.length > (ball.smash ? 22 : 14)) trail.shift();
     }
   } else trail.length = 0;
 }
@@ -1170,12 +1296,12 @@ function armAngle(e, prep) {
   return lerp(rest, 1.05, prep || 0);
 }
 
-function drawStickman(e, flip, prep) {
+function drawStickman(e, flip, prep, color) {
   ctx.save();
   ctx.translate(e.x, e.y);
-  ctx.rotate(flip ? -e.lean : e.lean);
+  ctx.rotate((flip ? -e.lean : e.lean) + (e === player ? -e.dir * 0.12 * game.focus : 0));
   ctx.scale(S, flip ? -S : S);
-  ctx.strokeStyle = INK; ctx.fillStyle = INK;
+  ctx.strokeStyle = color || INK; ctx.fillStyle = color || INK;
   ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.lineJoin = "round";
 
   const sp = Math.abs(e.lean) * 40;
@@ -1189,7 +1315,9 @@ function drawStickman(e, flip, prep) {
   ctx.moveTo(0, 20); ctx.lineTo(12 + sp * 0.5, 38); ctx.lineTo(22 + sp, 55);
   ctx.stroke();
 
-  const a = armAngle(e, prep);
+  let a = armAngle(e, prep);
+  // 扣杀蓄力：高举球拍
+  if (e === player && game.focus > 0.01 && e.swingT >= 0.5) a = lerp(a, -1.55, game.focus);
   const off = e.swingT < 0.4 ? 6 : 0;
   ctx.beginPath();
   ctx.moveTo(0, -15); ctx.lineTo(-dir * 14, -2 - off); ctx.lineTo(-dir * 22, 8 - off);
@@ -1269,12 +1397,12 @@ function drawBall() {
 
   if (trail.length > 1) {
     ctx.lineCap = "round";
-    ctx.strokeStyle = col;
+    ctx.strokeStyle = b.smash ? INK : col;
     const hv = isHeavy(b);
     for (let i = 1; i < trail.length; i++) {
       const a = i / trail.length;
-      ctx.globalAlpha = a * (hv ? 0.6 : 0.22);
-      ctx.lineWidth = r * (hv ? 1.8 : 1.2) * a;
+      ctx.globalAlpha = a * (b.smash ? 0.85 : hv ? 0.6 : 0.22);
+      ctx.lineWidth = r * (b.smash ? 2.4 : hv ? 1.8 : 1.2) * a;
       ctx.beginPath(); ctx.moveTo(trail[i - 1].x, trail[i - 1].y); ctx.lineTo(trail[i].x, trail[i].y); ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -1326,6 +1454,35 @@ function drawEffects() {
         ctx.lineTo(f.x + Math.cos(a) * r1, f.y + Math.sin(a) * r1);
         ctx.stroke();
       }
+    } else if (f.type === "bigring") {
+      ctx.globalAlpha = (1 - k) * 0.8;
+      ctx.strokeStyle = INK; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.ellipse(f.x, f.y, lerp(6, 46, easeOut(k)) * S, lerp(3, 22, easeOut(k)) * S, 0, 0, TAU); ctx.stroke();
+    } else if (f.type === "splat") {
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = INK;
+      for (let i = 0; i < 7; i++) {
+        const a = f.seed + i * 0.9;
+        const d = lerp(4, 26 + (i % 3) * 8, easeOut(k)) * S;
+        ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * d, f.y + Math.sin(a) * d * 0.5, (2.6 - (i % 3) * 0.6) * S, 0, TAU); ctx.fill();
+      }
+    } else if (f.type === "speed") {
+      if (ball && ball.smash) {
+        const sp = Math.hypot(ball.vx, ball.vy) || 1;
+        const ux = -ball.vx / sp, uy = -ball.vy / sp;       // 指向球的后方
+        const px = -uy, py = ux;
+        const bx = ball.x, by = ball.y - ball.z;
+        ctx.globalAlpha = (1 - k) * 0.7;
+        ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.lineCap = "round";
+        for (let i = 0; i < 6; i++) {
+          const o = (i - 2.5) * 7 * S;
+          const s0 = (14 + (i % 2) * 10) * S, len = (34 + (i * 13) % 30) * S;
+          ctx.beginPath();
+          ctx.moveTo(bx + ux * s0 + px * o, by + uy * s0 + py * o);
+          ctx.lineTo(bx + ux * (s0 + len) + px * o, by + uy * (s0 + len) + py * o);
+          ctx.stroke();
+        }
+      }
     } else if (f.type === "text") {
       ctx.globalAlpha = 1 - k * k;
       ctx.fillStyle = f.color;
@@ -1337,11 +1494,57 @@ function drawEffects() {
   }
 }
 
+// PERFECT 连击：画在最底层的半透明水印，不遮挡任何东西
+function drawCombo() {
+  const n = game.combo;
+  if (n < 2 || game.state === "idle") return;
+  const k = Math.min(n, 20) / 20;
+  let size = lerp(18, 54, k) * S;
+  const bump = game.comboT < 0.15 ? 1 + 0.15 * (1 - game.comboT / 0.15) : 1;
+  const text = `PERFECT ×${n}`;
+  ctx.save();
+  ctx.font = `bold ${Math.round(size)}px Arial, sans-serif`;
+  const w = ctx.measureText(text).width;
+  if (w > W * 0.9) { size *= W * 0.9 / w; }
+  ctx.font = `bold ${Math.round(size * bump)}px Arial, sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.globalAlpha = 0.14 + 0.1 * k;
+  ctx.fillStyle = INK;
+  ctx.fillText(text, W / 2, (L.net + L.tb) / 2);
+  ctx.restore();
+}
+
+// 老朱：3 个 PERFECT 削球计数点
+function drawZhuDots() {
+  if (game.char !== "zhu" || game.state === "idle") return;
+  const y = player.y + 66 * S;
+  ctx.save();
+  ctx.strokeStyle = CHAR_COLOR.zhu; ctx.fillStyle = CHAR_COLOR.zhu; ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const x = player.x + (i - 1) * 12 * S;
+    ctx.beginPath(); ctx.arc(x, y, 3.5 * S, 0, TAU);
+    if (i < game.zhuDots) ctx.fill(); else ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function draw() {
+  // 冲击帧：柔和反色
+  const saveInk = INK, saveBg = BG;
+  if (game.impact > 0) { INK = "#f4d470"; BG = "#2a230c"; }
+
   ctx.save();
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
   if (game.shake > 0.3) ctx.translate(rand(-1, 1) * game.shake, rand(-1, 1) * game.shake);
+
+  // 镜头推近 / 回弹（以扣杀聚焦点为中心）
+  if (Math.abs(game.zoom) > 0.0005) {
+    const cx = ball ? lerp(ball.x, player.x, 0.35) : W / 2;
+    const cy = ball ? lerp(ball.y - ball.z, L.playerY, 0.35) : H / 2;
+    ctx.translate(cx, cy); ctx.scale(1 + game.zoom, 1 + game.zoom); ctx.translate(-cx, -cy);
+  }
+  drawCombo();
 
   ctx.save();
   ctx.globalAlpha = 0.08; ctx.strokeStyle = INK; ctx.lineWidth = 2;
@@ -1361,7 +1564,8 @@ function draw() {
   const behind = ball && ball.y < L.net;
   if (behind) drawBall();
   drawNet();
-  drawStickman(player, false, playerPrep);
+  drawStickman(player, false, playerPrep, game.impact > 0 ? INK : playerColor());
+  drawZhuDots();
   if (!behind) drawBall();
   drawEffects();
 
@@ -1372,9 +1576,10 @@ function draw() {
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, `rgba(0,0,0,${0.42 * game.focus})`);
     ctx.fillStyle = g;
-    ctx.fillRect(-20, -20, W + 40, H + 40);
+    ctx.fillRect(-40, -40, W + 80, H + 80);
   }
   ctx.restore();
+  INK = saveInk; BG = saveBg;
 }
 
 /* ================= 输入 ================= */
@@ -1469,10 +1674,19 @@ lvInfoBtn.addEventListener("click", () => {
 helpBtn.addEventListener("click", () => { helpBtn.blur(); helpEl.hidden = false; });
 helpEl.addEventListener("click", () => { helpEl.hidden = true; });
 
+const charButtons = document.querySelectorAll("#chars button");
+function setChar(c) {
+  game.char = c;
+  try { localStorage.setItem("spp_char", c); } catch (e) {}
+  charButtons.forEach(b => b.classList.toggle("on", b.dataset.char === c));
+}
+charButtons.forEach(b => b.addEventListener("click", () => { b.blur(); setChar(b.dataset.char); }));
+
 function applyLang() {
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   langBtn.textContent = lang === "zh" ? "EN" : "中";
   document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = T(e.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-char]").forEach(e => { e.textContent = T("chars")[e.dataset.i18nChar]; });
   document.getElementById("swipeHint").textContent = T("swipe");
   document.getElementById("helpText").innerHTML = T("help").join("<br>");
   renderLvInfo();
@@ -1487,6 +1701,7 @@ langBtn.addEventListener("click", () => {
 });
 
 setLevel(game.level);
+setChar(game.char);
 applyLang();
 
 /* ================= 主循环 ================= */
